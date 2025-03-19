@@ -61,44 +61,107 @@ def exercise1():
 def parse_arguments_ex2():
     args = sys.argv
     wdimacs_file = ""
-    assignment = ""
+    assignment_str = ""
+
     if "-wdimacs" in args:
         wdimacs_file = args[args.index("-wdimacs") + 1]
     if "-assignment" in args:
-        assignment = args[args.index("-assignment") + 1]
-    return wdimacs_file, assignment
+        assignment_str = args[args.index("-assignment") + 1]
+
+    return wdimacs_file, assignment_str
+
+
+def parse_assignment(assignment_str: str) -> list:
+    """
+    将形如 '01011' 的布尔赋值字符串转为 [False, True, False, True, True] 形式。
+    - '1' -> True
+    - '0' -> False
+    """
+    return [bit == '1' for bit in assignment_str]
 
 
 def parse_wdimacs_file_ex2(filename: str):
+    """
+    解析 WDIMACS 或 WCNF 文件，读取变量数 n，返回子句列表。
+    假设文件中有行:
+      c ...            (注释行, 跳过)
+      p wcnf n m ...   (格式行, 我们重点提取 n, 以及可选地 m)
+      weight var1 var2 ... varK 0 (实际子句，首列weight，末尾0)
+    """
     clauses = []
     num_variables = 0
+    num_clauses = 0  # 可选看需不需要严格匹配
+
     with open(filename, 'r') as file:
         for line in file:
             line = line.strip()
-            if line.startswith('c') or line == '':
+            # 跳过空行或注释行
+            if not line or line.startswith('c'):
                 continue
+
+            # 如果是格式行，以 'p' 开头
             if line.startswith('p'):
+                # 例如: p wcnf 4 2
                 parts = line.split()
-                num_variables = int(parts[2])  # get the number of variables: "n"
+                # parts[0] = 'p'
+                # parts[1] = 'wcnf' 或 'cnf'
+                # parts[2] = n
+                # parts[3] = m
+                num_variables = int(parts[2])
+                if len(parts) > 3:
+                    num_clauses = int(parts[3])
+                # 可以在此根据需要解析更多信息
                 continue
-            else:
-                literals = list(map(int, line.split()[:-1]))
-                clauses.append(literals)
+
+            # 子句行: 例如 '1 2 -3 4 0' 或 '0 1 -2 3 0'
+            tokens = list(map(int, line.split()))
+            # 跳过首字段(通常是权重或0)，跳过末尾的 0
+            clause_lits = tokens[1:-1]
+            clauses.append(clause_lits)
+
     return num_variables, clauses
 
 
 def validate_input_ex2(assignment: list, num_variables: int):
+    """
+    如果赋值长度和文件中声明的变量数不一致，则退出。
+    """
     if len(assignment) != num_variables:
         print(0)
         sys.exit(1)
 
 
+def is_clause_satisfied(assignment: list, clause: list) -> int:
+    """
+    判断单个子句是否被赋值 assignment 所满足。
+    子句中若存在一个文字被满足，则子句被满足。
+    返回 1 表示满足, 0 表示不满足。
+    """
+    for literal in clause:
+        index = abs(literal) - 1
+        # literal > 0  -> x_i
+        # literal < 0  -> ¬x_i
+        if literal > 0 and assignment[index]:
+            # 该文字为正文字，且该位为 True，即满足子句
+            return 1
+        elif literal < 0 and not assignment[index]:
+            # 该文字为负文字，且该位为 False，也满足子句
+            return 1
+    # 如果所有文字都不满足，则返回0
+    return 0
+
+
 def exercise2():
     wdimacs_file, assignment_str = parse_arguments_ex2()
+    # 将字符串'0101...'转成bool列表
     assignment = parse_assignment(assignment_str)
+    # 解析 WDIMACS 文件
     num_variables, clauses = parse_wdimacs_file_ex2(wdimacs_file)
+    # 校验输入合法性
     validate_input_ex2(assignment, num_variables)
+    # 计算满足的子句总数
     satisfied_count = sum(is_clause_satisfied(assignment, clause) for clause in clauses)
+    # 输出结果
     print(satisfied_count)
 
 
@@ -257,17 +320,17 @@ def run_memetic_bga(n, m, clauses, pop_size, mutation_rate, time_budget, selecti
             best_nsat_value = candidate_nsat
             best_individual = candidate_best
 
- 
+        # 选择父代
         parents = select_parents(population, fitness_scores, selection_rate)
-    
+        # 交叉产生后代
         offspring = crossover(parents)
-      
+        # 变异
         offspring = mutate(offspring, mutation_rate)
-  
+        # 局部搜索 (Memetic 核心)
         for i in range(len(offspring)):
             offspring[i] = local_search(offspring[i], clauses, m, ls_iterations)
 
-        
+        # 新种群 = 父代 + 后代(截断到pop_size大小)
         population = (parents + offspring)[:pop_size]
         generation += 1
 
