@@ -231,19 +231,16 @@ def evaluate_fitness(population, clauses, m):
 
 
 def initialize_population(pop_size, n):
-    """随机初始化种群。"""
     return [[random.randint(0, 1) for _ in range(n)] for _ in range(pop_size)]
 
 
 def select_parents(population, fitness_scores, selection_rate):
-    """简单的截断选择：根据fitness从好到差排序，选出一定比例的个体作为父代。"""
     ranked_pairs = sorted(zip(fitness_scores, population), key=lambda x: x[0])  # cost越小越好
     num_parents = max(int(len(population) * selection_rate), 2)
     return [ind for (_, ind) in ranked_pairs[:num_parents]]
 
 
 def crossover(parents):
-    """随机从父母集中选两条染色体做单点交叉，产生后代。"""
     offspring = []
     for _ in range(len(parents)):
         if len(parents) >= 2:
@@ -257,34 +254,11 @@ def crossover(parents):
 
 
 def mutate(offspring, mutation_rate):
-    """对后代进行变异。"""
     for individual in offspring:
         for i in range(len(individual)):
             if random.random() < mutation_rate:
                 individual[i] = 1 - individual[i]
     return offspring
-
-def local_search(individual, clauses, m, max_iterations=30):
-    """
-    采用随机单变量翻转的启发式局部搜索:
-    - 每次随机选择一个变量翻转
-    - 如果满足子句数提高则接受，否则回退
-    - 重复若干次
-    """
-    current = individual[:]
-    best_nsat = compute_nsat(current, clauses)
-    for _ in range(max_iterations):
-        idx = random.randrange(len(current))
-        # 尝试翻转
-        current[idx] = 1 - current[idx]
-        new_nsat = compute_nsat(current, clauses)
-        if new_nsat > best_nsat:
-            best_nsat = new_nsat
-        else:
-            # 回退翻转
-            current[idx] = 1 - current[idx]
-    return current
-
 
 
 def find_best_solution(population, fitness_scores, nsat_list):
@@ -292,11 +266,7 @@ def find_best_solution(population, fitness_scores, nsat_list):
     return population[best_idx], nsat_list[best_idx], fitness_scores[best_idx]
 
 
-def run_memetic_bga(n, m, clauses, pop_size, mutation_rate, time_budget, selection_rate, ls_iterations=30):
-    """
-    在原有BGA(遗传算法)的基础上，每轮在产生后代后，使用local_search对其进行强化，
-    最后在有限time_budget内找出最优解。
-    """
+def run_memetic_bga(n, m, clauses, pop_size, mutation_rate, time_budget, selection_rate):
     start_time = time.time()
     population = initialize_population(pop_size, n)
     generation = 0
@@ -310,27 +280,22 @@ def run_memetic_bga(n, m, clauses, pop_size, mutation_rate, time_budget, selecti
         if elapsed >= time_budget:
             break
 
-        # 评估当前种群
+        # evaluate current population
         fitness_scores, nsat_list = evaluate_fitness(population, clauses, m)
         candidate_best, candidate_nsat, candidate_fit = find_best_solution(population, fitness_scores, nsat_list)
 
-        # 更新全局最优解
+        # update optimal solution
         if candidate_fit < best_fitness_value:
             best_fitness_value = candidate_fit
             best_nsat_value = candidate_nsat
             best_individual = candidate_best
 
-        # 选择父代
         parents = select_parents(population, fitness_scores, selection_rate)
-        # 交叉产生后代
-        offspring = crossover(parents)
-        # 变异
-        offspring = mutate(offspring, mutation_rate)
-        # 局部搜索 (Memetic 核心)
-        for i in range(len(offspring)):
-            offspring[i] = local_search(offspring[i], clauses, m, ls_iterations)
 
-        # 新种群 = 父代 + 后代(截断到pop_size大小)
+        offspring = crossover(parents)
+
+        offspring = mutate(offspring, mutation_rate)
+
         population = (parents + offspring)[:pop_size]
         generation += 1
 
@@ -350,8 +315,7 @@ def exercise3():
             pop_size=50,
             mutation_rate=0.02,
             time_budget=time_budget,
-            selection_rate=0.2,
-            ls_iterations=30  # 局部搜索迭代次数
+            selection_rate=0.3
         )
         xbest_str = ''.join(str(bit) for bit in best_individual)
         results.append(f"{used_time}\t{best_nsat}\t{xbest_str}")
